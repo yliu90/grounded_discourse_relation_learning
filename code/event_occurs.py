@@ -1066,7 +1066,7 @@ def match_Relation(events, env_knowledge):
                 plain_txt = "#".join(["Concession", '+'.join(eA_event), c[2]])
                 plain_txt_total_pairs.append(plain_txt)
     # 
-    print "Knowledge finish ... "
+    # print "Knowledge finish ... "
 
     return plain_txt_total_pairs
 
@@ -1097,6 +1097,7 @@ def mirco_discourse_generator(whole_obs, event_correl, env_knowledge, store_path
     plain_txt_total_pairs = []
 
     # we now collecting event from each scene not whole scenes ...
+    print "Now we process all scenes from agent experience ... "
     for scene in whole_obs:
         scene_event = []
         for time_stamp in scene:
@@ -1105,7 +1106,7 @@ def mirco_discourse_generator(whole_obs, event_correl, env_knowledge, store_path
                 if plain_e not in scene_event:
                     scene_event.append(plain_e)
         # scene_event
-        print "In this scene, we found " , len(scene_event) , " event "
+        # print "In this scene, we found " , len(scene_event) , " event "
         # for e in scene_event:
         #     print e
         # print '###########'
@@ -1342,9 +1343,9 @@ def mirco_discourse_generator(whole_obs, event_correl, env_knowledge, store_path
 
     # eliminate the duplicated instance
     for item in total_pairs:
-        print '################'
-        print item
-        print len(total_pairs[item])
+        # print '################'
+        # print item
+        # print len(total_pairs[item])
         tmp_cache = []
         for pair in total_pairs[item]:
             txt = pair[1]+"#"+pair[2]
@@ -1357,8 +1358,8 @@ def mirco_discourse_generator(whole_obs, event_correl, env_knowledge, store_path
             new_.append([item, pairs[0], pairs[1]])
 
         total_pairs[item] = new_
-        print item
-        print len(total_pairs[item])
+        # print item
+        # print len(total_pairs[item])
 
     # generate_Expansion
     # deal with the number distribution of different discours relations
@@ -1661,7 +1662,7 @@ def from_rec_to_instance(rec):
         arg2_text = data_to_text_generation(arg2)
 
         # Explicit
-        exp_connectives = ["becuase/1","therefore/2","so/2","since/1"]
+        exp_connectives = ["becuase/1","therefore/2","then/2","since/1"]
         con_word = exp_connectives[random.randint(0,len(exp_connectives)-1)]
         w, p = con_word.split('/')
         if p == "1":
@@ -1694,7 +1695,7 @@ def from_rec_to_instance(rec):
         arg2_text = data_to_text_generation(arg2)
         
         # Explicit
-        exp_connectives = ["if/1"]
+        exp_connectives = ["if/1","when/1"]
         con_word = exp_connectives[random.randint(0,len(exp_connectives)-1)]
         w, p = con_word.split('/')
         if p == "1":
@@ -1761,7 +1762,7 @@ def from_rec_to_instance(rec):
         arg2_text = data_to_text_generation(arg2)
         
         # Explicit
-        exp_connectives = ["before/2", "after/2", "after/1", "before/1", "since/1"]
+        exp_connectives = ["before/2", "then/2", "after/1", "before/1", "since/1"]
         con_word = exp_connectives[random.randint(0,len(exp_connectives)-1)]
         w, p = con_word.split('/')
         if p == "1":
@@ -1795,7 +1796,7 @@ def from_rec_to_instance(rec):
         arg2_text = data_to_text_generation(arg2)
         
         # Explicit
-        exp_connectives = ["when/2", "while/2", "at the same time/1", "simultaneously/2" ]
+        exp_connectives = ["when/1", "while/2" ]
         con_word = exp_connectives[random.randint(0,len(exp_connectives)-1)]
         w, p = con_word.split('/')
         if p == "1":
@@ -1824,7 +1825,7 @@ def from_rec_to_instance(rec):
         arg1_text = data_to_text_generation(arg1)
         arg2_text = data_to_text_generation(arg2)
         # Explicit
-        exp_connectives = [ "moreover/2", "also/2", "and/2" ]
+        exp_connectives = [ "moreover/2", "then/2", "and/2" ]
         con_word = exp_connectives[random.randint(0,len(exp_connectives)-1)]
         w, p = con_word.split('/')
         if p == "1":
@@ -1936,27 +1937,60 @@ if __name__ == "__main__":
     
     records = open(store_path).readlines()
     new_records = []
+
+    #
     limit_size = 979
     concession_part = []
+
+    # 
+    exp_limit_size = 3834
+    expansion_part = []
     for r in records:
         items = r.strip().split('\t')
         if items[0] == "Concession":
             concession_part.append(r)
+        elif items[0] == "Expansion":
+            expansion_part.append(r)
         else:
             new_records.append(r)
 
+    ####
     random_concession_idx = []
-    for i in range(limit_size):
+    while True:
         idx = random.randint(0,len(concession_part)-1)
         if idx not in random_concession_idx:
             random_concession_idx.append(idx)
-        else:
-            pass
+        if len(random_concession_idx) > limit_size:
+            break
 
+    random_expansion_idx = []
+    while True:
+        idx = random.randint(0, len(expansion_part)-1)
+        if idx not in random_expansion_idx:
+            random_expansion_idx.append(idx)
+        if len(random_expansion_idx) > exp_limit_size:
+            break
+
+    #####
     for i in random_concession_idx:
         new_records.append(concession_part[i])
+    for i in random_expansion_idx:
+        new_records.append(expansion_part[i])
 
     records = new_records
+
+    # recount the instance number for each different discourse relations
+    count_dict = OrderedDict()
+    for r in records:
+        items = r.strip().split('\t')
+        if items[0] not in count_dict:
+            count_dict[items[0]] = 1
+        else:
+            count_dict[items[0]] += 1
+
+    # 
+    print "Output discourse relation distrbution ... "
+    print count_dict
 
     # Step.7 event to NLP ... 
     # --> map the event into Language 

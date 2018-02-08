@@ -18,7 +18,7 @@ from data_construction import *
 
 
 
-class NaiveLstmNetwork(object):
+class NaiveCNNNetwork(object):
 
     def __init__(self, sess, word_vocab_size, word_dim, state_dim, inner_dim, num_steps, batch_size, rel_dim, grad_applier):
 
@@ -45,31 +45,45 @@ class NaiveLstmNetwork(object):
         self.arg1_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg1)
         self.arg2_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg2)
 
-        # pooling operation ... # capture the feature clues from word embedding ...
-        # use max mean sum three different options for pooling tecnology
+        # sequence mask leave the padding???? it looks like cnn is not very sensitive of it
+        # build filter for argument
 
-        # use tf slices to do this
-        self.arg1_mask = tf.sequence_mask(self.arg1_len, self.num_steps, dtype=tf.float32) 
-        self.arg2_mask = tf.sequence_mask(self.arg2_len, self.num_steps, dtype=tf.float32)
+        filter_number = self.inner_dim
 
-        arg1msk_shape = tf.shape(self.arg1_mask)
-        arg2msk_shape = tf.shape(self.arg2_mask)
+        cnn_w1 = tf.Variable(tf.truncated_normal([2,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b1 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
 
-        self.arg1_mask = tf.reshape(self.arg1_mask, [arg1msk_shape[0], arg1msk_shape[1], 1])
-        self.arg2_mask = tf.reshape(self.arg2_mask, [arg2msk_shape[0], arg2msk_shape[1], 1])
+        cnn_w2 = tf.Variable(tf.truncated_normal([3,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b2 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
 
-        self.arg1_lo = tf.reduce_sum(self.arg1_emb*self.arg1_mask, axis=1)
-        self.arg2_lo = tf.reduce_sum(self.arg2_emb*self.arg2_mask, axis=1)
+        cnn_w3 = tf.Variable(tf.truncated_normal([4,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b3 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        h1_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w1,stride=1,padding='SAME')+cnn_b1)
+        h2_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w2,stride=1,padding='SAME')+cnn_b2)
+        h3_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w3,stride=1,padding='SAME')+cnn_b3)
         
-        # now we 
-        self.feat_ = tf.concat([self.arg1_lo, self.arg2_lo],axis=1) # 
+        h1_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w1,stride=1,padding='SAME')+cnn_b1)
+        h2_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w2,stride=1,padding='SAME')+cnn_b2)
+        h3_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w3,stride=1,padding='SAME')+cnn_b3)
+
+        # using max pooling 
+        h1_a1_max = tf.reduce_max(h1_a1, axis=1)
+        h2_a1_max = tf.reduce_max(h2_a1, axis=1)
+        h3_a1_max = tf.reduce_max(h3_a1, axis=1)
+        h1_a1_max = tf.reduce_max(h1_a2, axis=1)
+        h2_a2_max = tf.reduce_max(h2_a2, axis=1)
+        h3_a2_max = tf.reduce_max(h3_a2, axis=1)
+
+        cnn_feat = tf.concat([h1_a1_max, h2_a1_max, h3_a1_max, h1_a1_max, h2_a2_max, h3_a2_max], axis=1)
+
 
         # after two full-connected layers 
-        self.W_1, self.b_1 = self._fc_variable([self.word_dim*2, self.word_dim]) # 
-        self.inner_feat = tf.tanh(tf.matmul(self.feat_,self.W_1)+self.b_1)
+        self.W_1, self.b_1 = self._fc_variable([self.inner_dim*6, self.inner_dim*2]) # 
+        self.inner_feat = tf.tanh(tf.matmul(cnn_feat,self.W_1)+self.b_1)
 
-        self.W_3, self.b_3 = self._fc_variable([self.word_dim*1, self.rel_dim])
-        logit = tf.matmul(self.inner_feat, self.W_3) + self.b_3
+        self.W_2, self.b_2 = self._fc_variable([self.inner_dim*2, self.rel_dim]) # 
+        logit = tf.matmul(self.inner_feat, self.W_2) + self.b_2
 
         self.predict_score = tf.nn.softmax(logit)
         self.max_predict_score = tf.argmax(self.predict_score, axis=1) # 
@@ -418,7 +432,7 @@ def process():
     # part 1 : data preparation
     # setup 
     ###################################
-    data_path = "../../data/implicits"
+    data_path = "../../data/explicits"
     batch_size = 64
 
     # build up word embedding (word<->index)
@@ -446,7 +460,7 @@ def process():
     inner_dim = 100
     rel_dim = len(rel_to_index)
 
-    model = NaiveLstmNetwork(sess, word_vocab_size, word_dim, state_dim, inner_dim, num_steps, batch_size, rel_dim, None)
+    model = NaiveCNNNetwork(sess, word_vocab_size, word_dim, state_dim, inner_dim, num_steps, batch_size, rel_dim, None)
 
 
     # part 3 : model training
@@ -458,6 +472,11 @@ def process():
 if __name__ == "__main__":
 
 
+
+
+
     process()
+
     # using early stop
+
     # train dev test

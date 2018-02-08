@@ -418,7 +418,7 @@ def process():
     # part 1 : data preparation
     # setup 
     ###################################
-    data_path = "../../data/implicits"
+    data_path = "../../data/explicits"
     batch_size = 64
 
     # build up word embedding (word<->index)

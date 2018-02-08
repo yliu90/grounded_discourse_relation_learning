@@ -18,7 +18,7 @@ from data_construction import *
 
 
 
-class NaiveLstmNetwork(object):
+class NaiveCNNNetwork(object):
 
     def __init__(self, sess, word_vocab_size, word_dim, state_dim, inner_dim, num_steps, batch_size, rel_dim, grad_applier):
 
@@ -45,40 +45,45 @@ class NaiveLstmNetwork(object):
         self.arg1_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg1)
         self.arg2_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg2)
 
-        with tf.variable_scope('lstm') as scope:
-            # 
-            cell_fw = tf.contrib.rnn.LSTMCell(inner_dim, state_is_tuple=True, reuse=tf.get_variable_scope().reuse)
-            # logic memory part
-            self._initial_state = cell_fw.zero_state(tf.shape(self.arg1)[0], tf.float32)
-            # arg1 part
-            self.arg1_output, self.arg1_state = tf.nn.dynamic_rnn(cell=cell_fw, \
-                    inputs=self.arg1_emb, \
-                    sequence_length=self.arg1_len, \
-                    initial_state=self._initial_state)
-            
-            scope.reuse_variables()
-            # arg2 part
-            self.arg2_output, self.arg2_state = tf.nn.dynamic_rnn(cell=cell_fw, \
-                    inputs=self.arg2_emb, \
-                    sequence_length=self.arg2_len,\
-                    initial_state=self._initial_state)
+        # sequence mask leave the padding???? it looks like cnn is not very sensitive of it
+        # build filter for argument
 
-        # now we 
-        self.arg1_lo = self.extract_axis_1(self.arg1_output, self.arg1_len-1)
-        self.arg2_lo = self.extract_axis_1(self.arg2_output, self.arg2_len-1)
+        filter_number = self.inner_dim
 
-        self.feat_ = tf.concat([self.arg1_lo, self.arg2_lo],axis=1) # 
+        cnn_w1 = tf.Variable(tf.truncated_normal([2,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b1 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        cnn_w2 = tf.Variable(tf.truncated_normal([3,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b2 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        cnn_w3 = tf.Variable(tf.truncated_normal([4,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b3 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        h1_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w1,stride=1,padding='SAME')+cnn_b1)
+        h2_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w2,stride=1,padding='SAME')+cnn_b2)
+        h3_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w3,stride=1,padding='SAME')+cnn_b3)
+        
+        h1_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w1,stride=1,padding='SAME')+cnn_b1)
+        h2_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w2,stride=1,padding='SAME')+cnn_b2)
+        h3_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w3,stride=1,padding='SAME')+cnn_b3)
+
+        # using max pooling 
+        h1_a1_max = tf.reduce_max(h1_a1, axis=1)
+        h2_a1_max = tf.reduce_max(h2_a1, axis=1)
+        h3_a1_max = tf.reduce_max(h3_a1, axis=1)
+        h1_a1_max = tf.reduce_max(h1_a2, axis=1)
+        h2_a2_max = tf.reduce_max(h2_a2, axis=1)
+        h3_a2_max = tf.reduce_max(h3_a2, axis=1)
+
+        cnn_feat = tf.concat([h1_a1_max, h2_a1_max, h3_a1_max, h1_a1_max, h2_a2_max, h3_a2_max], axis=1)
+
 
         # after two full-connected layers 
-        
-        self.W_1, self.b_1 = self._fc_variable([self.inner_dim*2, self.inner_dim*2]) # 
-        self.inner_feat = tf.tanh(tf.matmul(self.feat_,self.W_1)+self.b_1)
+        self.W_1, self.b_1 = self._fc_variable([self.inner_dim*6, self.inner_dim*2]) # 
+        self.inner_feat = tf.tanh(tf.matmul(cnn_feat,self.W_1)+self.b_1)
 
-        self.W_2, self.b_2 = self._fc_variable([self.inner_dim*2, self.inner_dim*1]) # 
-        self.inner_feat_2 = tf.tanh(tf.matmul(self.inner_feat, self.W_2) + self.b_2)
-
-        self.W_3, self.b_3 = self._fc_variable([self.inner_dim*1, self.rel_dim])
-        logit = tf.matmul(self.inner_feat_2, self.W_3) + self.b_3
+        self.W_2, self.b_2 = self._fc_variable([self.inner_dim*2, self.rel_dim]) # 
+        logit = tf.matmul(self.inner_feat, self.W_2) + self.b_2
 
         self.predict_score = tf.nn.softmax(logit)
         self.max_predict_score = tf.argmax(self.predict_score, axis=1) # 
@@ -455,7 +460,7 @@ def process():
     inner_dim = 100
     rel_dim = len(rel_to_index)
 
-    model = NaiveLstmNetwork(sess, word_vocab_size, word_dim, state_dim, inner_dim, num_steps, batch_size, rel_dim, None)
+    model = NaiveCNNNetwork(sess, word_vocab_size, word_dim, state_dim, inner_dim, num_steps, batch_size, rel_dim, None)
 
 
     # part 3 : model training

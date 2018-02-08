@@ -60,27 +60,36 @@ class TemporalCluesNetwork(object):
         self.arg1_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg1)
         self.arg2_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg2)
 
-        with tf.variable_scope('lstm') as scope:
-            # 
-            cell_fw = tf.contrib.rnn.LSTMCell(self.inner_dim, state_is_tuple=True, reuse=tf.get_variable_scope().reuse)
-            # logic memory part
-            self._initial_state = cell_fw.zero_state(tf.shape(self.arg1)[0], tf.float32)
-            # arg1 part
-            self.arg1_output, self.arg1_state = tf.nn.dynamic_rnn(cell=cell_fw, \
-                    inputs=self.arg1_emb, \
-                    sequence_length=self.arg1_len, \
-                    initial_state=self._initial_state)
-            scope.reuse_variables()
-            # arg2 part
-            self.arg2_output, self.arg2_state = tf.nn.dynamic_rnn(cell=cell_fw, \
-                    inputs=self.arg2_emb, \
-                    sequence_length=self.arg2_len,\
-                    initial_state=self._initial_state)
+        # sequence mask
 
-        # now we 
-        self.arg1_lo = self.extract_axis_1(self.arg1_output, self.arg1_len-1)
-        self.arg2_lo = self.extract_axis_1(self.arg2_output, self.arg2_len-1)
+        filter_number = self.inner_dim
         
+        cnn_w1 = tf.Variable(tf.truncated_normal([2,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b1 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        cnn_w2 = tf.Variable(tf.truncated_normal([3,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b2 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        cnn_w3 = tf.Variable(tf.truncated_normal([4,self.word_dim,filter_number],stddev=0.02,dtype=tf.float32))
+        cnn_b3 = tf.Variable(tf.random_uniform([1],0,0.01,dtype=tf.float32))
+
+        h1_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w1,stride=1,padding='SAME')+cnn_b1)
+        h2_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w2,stride=1,padding='SAME')+cnn_b2)
+        h3_a1 = tf.nn.tanh(tf.nn.conv1d(self.arg1_emb,cnn_w3,stride=1,padding='SAME')+cnn_b3)
+        
+        h1_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w1,stride=1,padding='SAME')+cnn_b1)
+        h2_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w2,stride=1,padding='SAME')+cnn_b2)
+        h3_a2 = tf.nn.tanh(tf.nn.conv1d(self.arg2_emb,cnn_w3,stride=1,padding='SAME')+cnn_b3)
+
+        # using max pooling 
+        h1_a1_max = tf.reduce_max(h1_a1, axis=1)
+        h2_a1_max = tf.reduce_max(h2_a1, axis=1)
+        h3_a1_max = tf.reduce_max(h3_a1, axis=1)
+        h1_a1_max = tf.reduce_max(h1_a2, axis=1)
+        h2_a2_max = tf.reduce_max(h2_a2, axis=1)
+        h3_a2_max = tf.reduce_max(h3_a2, axis=1)
+
+        self.cnn_feat = tf.concat([h1_a1_max, h2_a1_max, h3_a1_max, h1_a1_max, h2_a2_max, h3_a2_max], axis=1)
         # related event 
         #  
         self.eA = tf.placeholder(tf.int32, [None, self.num_steps])
@@ -133,21 +142,19 @@ class TemporalCluesNetwork(object):
         seen_events = None
         # get correlation score
         # given event eB seen_event difference
-
         # eA => batch, eA_representation => eA_match_idx
         # eB => batch, eB_representation => eB_match_idx
         self.eA_lo = self.extract_axis_1(self.eA_output, self.eA_len-1)
         self.eB_lo = self.extract_axis_1(self.eB_output, self.eB_len-1)
+        # net 
         self.seen_event_memory_lo = self.extract_axis_1(self.seen_event_output, self.seen_event_lens-1)
 
         # search for simility memory event
         self.seen_event_memory_nor = tf.nn.l2_normalize(self.seen_event_memory_lo, dim=1)
         self.eA_nor = tf.nn.l2_normalize(self.eA_lo, dim=1)
         self.eB_nor = tf.nn.l2_normalize(self.eB_lo, dim=1)
-
         self.eA_cs = tf.matmul(self.eA_nor, tf.transpose(self.seen_event_memory_nor, [1,0]))
         self.eB_cs = tf.matmul(self.eB_nor, tf.transpose(self.seen_event_memory_nor, [1,0]))
-
         # 
         self.eA_idx = tf.argmax(self.eA_cs, 1)
         self.eB_idx = tf.argmax(self.eB_cs, 1)
@@ -168,27 +175,34 @@ class TemporalCluesNetwork(object):
 
         self.f_A_B = tf.gather_nd(self.f_mtrx, A_B_index)
         self.f_B_A = tf.gather_nd(self.f_mtrx, B_A_index)
-
         self.m_A_B = tf.gather_nd(self.m_mtrx, A_B_index)
         self.m_B_A = tf.gather_nd(self.m_mtrx, B_A_index)
-
         self.p_A_B = tf.gather_nd(self.p_mtrx, A_B_index)
         self.p_B_A = tf.gather_nd(self.p_mtrx, B_A_index)
 
         self.temporal_clues = tf.stack([self.f_A_B, self.f_B_A, self.m_A_B, self.m_B_A, self.p_A_B, self.p_B_A], axis=1)
+
+        # self.arg1_lo self.arg2_lo / self.temporal_clues
+        # expand the temporal clues
+        self.W_temporal, self.b_temporal = self._fc_variable([self.temporal_dim, self.inner_dim])
+        self.temporal_feat = tf.tanh(tf.matmul(self.temporal_clues, self.W_temporal) + self.b_temporal)
         # 
+        self.W_e_diff, self.b_e_diff = self._fc_variable([self.inner_dim, self.inner_dim/2])
+        self.eA_diff_feat = tf.tanh(tf.matmul(self.eA_diff, self.W_e_diff)+self.b_e_diff)
+        self.eB_diff_feat = tf.tanh(tf.matmul(self.eB_diff, self.W_e_diff)+self.b_e_diff)
+        self.feat_diff = tf.concat([self.eA_diff_feat, self.eB_diff_feat],axis=1) # 
+
         # after two full-connected layers 
+        self.sen_temporal_feat = tf.concat([self.cnn_feat, self.temporal_feat, self.feat_diff], axis=1)
 
-        self.W_1 , self.b_1 = self._fc_variable([6, self.state_dim])
-        self.W_2 , self.b_2 = self._fc_variable([self.state_dim, self.rel_dim])
-        self.feat = tf.matmul(self.temporal_clues, self.W_1) + self.b_1
-        self.logit = tf.matmul(self.feat, self.W_2) + self.b_2
+        self.W_f_1, self.b_f_1 = self._fc_variable([(self.inner_dim*6+(self.inner_dim/2)*2)+self.inner_dim, self.rel_dim])
+        logit = tf.tanh(tf.matmul(self.sen_temporal_feat, self.W_f_1) + self.b_f_1)
 
-        self.predict_score = tf.nn.softmax(self.logit)
+        self.predict_score = tf.nn.softmax(logit)
         self.max_predict_score = tf.argmax(self.predict_score, axis=1) # 
 
         # cosine matching
-        self.total_loss = tf.losses.sparse_softmax_cross_entropy(self.true_rel, self.logit)
+        self.total_loss = tf.losses.sparse_softmax_cross_entropy(self.true_rel, logit)
         
         global_step = tf.Variable(0, name='global_step', trainable=False)
         optimizer = tf.train.AdamOptimizer(1e-4)
@@ -325,13 +339,14 @@ def early_stop(acc_history,patient=300):
 
 
 
-def train_model(model, batchs, index_to_rel):
+def train_model(model, batchs, index_to_rel, divs):
 
     # divides the train dev test for 8/1/1
     print 'total number of batchs samples ... '
     print len(batchs)
 
-    divs = [6,2,2]
+    if divs is None:
+        divs = [6,2,2]
     train, dev, tst = divides(batchs,divs)
 
     print 'The size of corpora including train, dev, test ... '
@@ -682,14 +697,17 @@ def process():
     
     config = OrderedDict()
     config['sess'] = sess
-    config['batch_size'] = 16
+    config['batch_size'] = 64
     config['word_vocab_size'] = len(index_to_word)
     config['grounded_vocab_size'] = len(index_to_grounded)
+
+    print config['word_vocab_size']
+    print config['grounded_vocab_size']
     config['word_dim'] = 150
-    config['grounded_dim'] = 150
-    config['state_dim'] = 150
+    config['grounded_dim'] = 50
+    config['state_dim'] = 50
     config['num_steps'] = maxlen
-    config['inner_dim'] = 150
+    config['inner_dim'] = 50
     config['rel_dim'] = len(rel_to_index)
 
     config['f_mtrx'] = np.asarray(f_mtrx, dtype=np.float32)
@@ -701,18 +719,21 @@ def process():
     print np.shape(config['seen_event_memory'])
     config['seen_event_lens'] = seen_event_lens
 
+
     model = TemporalCluesNetwork(config)
 
     ####################################
     # part 3 : model training
     ####################################
 
-    train_model(model, batchs, index_to_rel)
+    divs = [6,2,2]
+    train_model(model, batchs, index_to_rel, divs)
 
 
 if __name__ == "__main__":
 
-
     process()
+
     # using early stop
+
     # train dev test

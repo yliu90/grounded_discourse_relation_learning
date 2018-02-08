@@ -45,31 +45,40 @@ class NaiveLstmNetwork(object):
         self.arg1_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg1)
         self.arg2_emb = tf.nn.embedding_lookup(self.word_embedding, self.arg2)
 
-        # pooling operation ... # capture the feature clues from word embedding ...
-        # use max mean sum three different options for pooling tecnology
+        with tf.variable_scope('lstm') as scope:
+            # 
+            cell_fw = tf.contrib.rnn.LSTMCell(inner_dim, state_is_tuple=True, reuse=tf.get_variable_scope().reuse)
+            # logic memory part
+            self._initial_state = cell_fw.zero_state(tf.shape(self.arg1)[0], tf.float32)
+            # arg1 part
+            self.arg1_output, self.arg1_state = tf.nn.dynamic_rnn(cell=cell_fw, \
+                    inputs=self.arg1_emb, \
+                    sequence_length=self.arg1_len, \
+                    initial_state=self._initial_state)
+            
+            scope.reuse_variables()
+            # arg2 part
+            self.arg2_output, self.arg2_state = tf.nn.dynamic_rnn(cell=cell_fw, \
+                    inputs=self.arg2_emb, \
+                    sequence_length=self.arg2_len,\
+                    initial_state=self._initial_state)
 
-        # use tf slices to do this
-        self.arg1_mask = tf.sequence_mask(self.arg1_len, self.num_steps, dtype=tf.float32) 
-        self.arg2_mask = tf.sequence_mask(self.arg2_len, self.num_steps, dtype=tf.float32)
-
-        arg1msk_shape = tf.shape(self.arg1_mask)
-        arg2msk_shape = tf.shape(self.arg2_mask)
-
-        self.arg1_mask = tf.reshape(self.arg1_mask, [arg1msk_shape[0], arg1msk_shape[1], 1])
-        self.arg2_mask = tf.reshape(self.arg2_mask, [arg2msk_shape[0], arg2msk_shape[1], 1])
-
-        self.arg1_lo = tf.reduce_sum(self.arg1_emb*self.arg1_mask, axis=1)
-        self.arg2_lo = tf.reduce_sum(self.arg2_emb*self.arg2_mask, axis=1)
-        
         # now we 
+        self.arg1_lo = self.extract_axis_1(self.arg1_output, self.arg1_len-1)
+        self.arg2_lo = self.extract_axis_1(self.arg2_output, self.arg2_len-1)
+
         self.feat_ = tf.concat([self.arg1_lo, self.arg2_lo],axis=1) # 
 
         # after two full-connected layers 
-        self.W_1, self.b_1 = self._fc_variable([self.word_dim*2, self.word_dim]) # 
+        
+        self.W_1, self.b_1 = self._fc_variable([self.inner_dim*2, self.inner_dim*2]) # 
         self.inner_feat = tf.tanh(tf.matmul(self.feat_,self.W_1)+self.b_1)
 
-        self.W_3, self.b_3 = self._fc_variable([self.word_dim*1, self.rel_dim])
-        logit = tf.matmul(self.inner_feat, self.W_3) + self.b_3
+        self.W_2, self.b_2 = self._fc_variable([self.inner_dim*2, self.inner_dim*1]) # 
+        self.inner_feat_2 = tf.tanh(tf.matmul(self.inner_feat, self.W_2) + self.b_2)
+
+        self.W_3, self.b_3 = self._fc_variable([self.inner_dim*1, self.rel_dim])
+        logit = tf.matmul(self.inner_feat_2, self.W_3) + self.b_3
 
         self.predict_score = tf.nn.softmax(logit)
         self.max_predict_score = tf.argmax(self.predict_score, axis=1) # 
@@ -418,7 +427,7 @@ def process():
     # part 1 : data preparation
     # setup 
     ###################################
-    data_path = "../../data/implicits"
+    data_path = "../../data/explicits"
     batch_size = 64
 
     # build up word embedding (word<->index)
@@ -458,6 +467,11 @@ def process():
 if __name__ == "__main__":
 
 
+
+
+
     process()
+
     # using early stop
+
     # train dev test

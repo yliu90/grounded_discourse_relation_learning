@@ -193,10 +193,13 @@ class TemporalCluesNetwork(object):
 
         # after two full-connected layers 
         self.sen_temporal_feat = tf.concat([self.feat_, self.temporal_feat, self.feat_diff], axis=1)
-        self.W_f_1, self._ = self._fc_variable([((self.inner_dim/2)*2), self.rel_dim])
-        self.W_f_2, self._ = self._fc_variable([((self.inner_dim/2)*2), self.rel_dim])
-        self.W_f_3, self.b_f_3 = self._fc_variable([self.inner_dim, self.rel_dim])
-        logit = tf.tanh(tf.matmul(self.temporal_feat,self.W_f_3)+tf.matmul(self.feat_,self.W_f_1)+tf.matmul(self.feat_diff,self.W_f_2)+self.b_f_3)
+
+        self.W_f_1, self.b_f_1 = self._fc_variable([((self.inner_dim/2)*2)*2+self.inner_dim, self.rel_dim])
+        # self.W_f_2, self.b_f_2 = self._fc_variable([self.inner_dim, self.rel_dim])
+
+        # self.tmp_feat = tf.tanh(tf.matmul(self.sen_temporal_feat, self.W_f_1) + self.b_f_1)
+        logit = tf.tanh(tf.matmul(self.sen_temporal_feat, self.W_f_1) + self.b_f_1)
+        # logit = tf.tanh(tf.matmul(self.tmp_feat, self.W_f_2) + self.b_f_2)
 
         # self.W_diff, self.b_diff = self._fc_variable([self.inner_dim, self.inner_dim/2])
         # self.diff_feat_A = tf.tanh(tf.matmul(self.eA_diff, self.W_diff) + self.b_diff)
@@ -706,7 +709,10 @@ def process():
     config['batch_size'] = 64
     config['word_vocab_size'] = len(index_to_word)
     config['grounded_vocab_size'] = len(index_to_grounded)
-    config['word_dim'] = 100
+
+    print config['word_vocab_size']
+    print config['grounded_vocab_size']
+    config['word_dim'] = 150
     config['grounded_dim'] = 50
     config['state_dim'] = 50
     config['num_steps'] = maxlen
@@ -721,6 +727,7 @@ def process():
     config['seen_event_memory'] = np.asarray(whole_memory, dtype=np.int32)
     print np.shape(config['seen_event_memory'])
     config['seen_event_lens'] = seen_event_lens
+
 
     model = TemporalCluesNetwork(config)
 

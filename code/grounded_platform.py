@@ -587,7 +587,15 @@ def with_punch(agent_host, punch_cmd, my_mission, my_mission_record, plm):
         # build up the fence or ironblock using stone 
         # pig x5,y5,z5
         # build fence to limit the move
-        fence = 'obsidian'
+        fence = 'sand'
+
+        my_mission.drawCuboid(-0,4,-0,10,4,10,'stone')
+        my_mission.drawCuboid(-0,4,-0,10,9,-0,'sand')
+        my_mission.drawCuboid(-0,4,-0,-0,9,10,'sand')
+        my_mission.drawCuboid(-0,4,10,10,9,10,'sand')
+        my_mission.drawCuboid(10,4,-0,10,9,10,'sand')
+
+        """
         my_mission.drawBlock(5,4,6,fence)
         my_mission.drawBlock(4,4,6,fence)
         my_mission.drawBlock(6,4,6,fence)
@@ -630,7 +638,7 @@ def with_punch(agent_host, punch_cmd, my_mission, my_mission_record, plm):
         my_mission.drawBlock(5,3,5,fence)
         my_mission.drawBlock(5,3,4,fence)
         my_mission.drawBlock(5,3,3,fence)
-
+        """
         # 
         if blockflag == "BlockType":
             my_mission.drawBlock(5,4,5,target)
@@ -1017,7 +1025,7 @@ def scene_play(path,plm):
     # Step.2
 
     # random shuffle
-    random.shuffle(scenes)
+    # random.shuffle(scenes)
     for s in scenes:
         # excute the agent action via (api command)
         # update 1 : agent_id_owns/ environment_owns/ is different, which is not apply to the fact
